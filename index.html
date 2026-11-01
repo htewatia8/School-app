@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>School App</title>
+<style>
+:root{--bg:#f3f5fb;--card:#fff;--tx:#111827;--mu:#6b7280;--pr:#2352e8;--ok:#16a34a;--bad:#dc2626;--bd:#e5e7eb}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1420;--card:#1a2133;--tx:#f3f4f6;--mu:#9ca3af;--bd:#2a3350}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font-family:system-ui,sans-serif}
+#app{max-width:480px;margin:0 auto;padding-bottom:80px;min-height:100vh}
+.hd{background:var(--pr);color:#fff;padding:22px 18px;border-radius:0 0 24px 24px}.hd h1{margin:0;font-size:22px}.hd p{margin:4px 0 0;opacity:.9;font-size:14px}
+.sec{padding:16px}.card{background:var(--card);border:1px solid var(--bd);border-radius:16px;padding:14px;margin-bottom:10px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+input,select,textarea,button{font:inherit;padding:11px 12px;border-radius:12px;border:1px solid var(--bd);background:var(--card);color:var(--tx);width:100%;margin-bottom:10px}
+button{background:var(--pr);color:#fff;border:0;font-weight:700;cursor:pointer}button.g{background:var(--ok);width:auto;margin:0}button.r{background:var(--bad);width:auto;margin:0}
+.mo{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center;font-size:12px}.mo span{padding:6px 0;border-radius:6px}.mo .w{color:var(--mu);font-weight:700}.mo .h{background:var(--bad);color:#fff;font-weight:700}.mo .s{color:var(--bad)}.mo .t{outline:2px solid var(--pr)}
+.big{font-size:42px;font-weight:800}.ok{color:var(--ok)}.bad{color:var(--bad)}.mu{color:var(--mu);font-size:13px}
+nav{position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px solid var(--bd);display:flex;max-width:480px;margin:0 auto}
+nav button{background:none;color:var(--mu);border-radius:0;margin:0;border:0}nav button.on{color:var(--pr)}
+</style></head><body><div id="app"></div>
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {getAuth,onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut,GoogleAuthProvider,signInWithPopup} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import {getFirestore,doc,getDoc,setDoc,updateDoc,collection,getDocs,query,where,writeBatch,addDoc,deleteDoc} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+// 1) APNA FIREBASE CONFIG YAHAN PASTE KAREIN
+const firebaseConfig = {
+  apiKey: "AIzaSyAd35spNVDuFSYSZpTafxnCkGtISczgoLM",
+  authDomain: "global-360-rrgs.firebaseapp.com",
+  projectId: "global-360-rrgs",
+  storageBucket: "global-360-rrgs.firebasestorage.app",
+  messagingSenderId: "22337962786",
+  appId: "1:22337962786:web:2886f52ac4293284b39b7b"
+};
+const app = initializeApp(firebaseConfig), auth = getAuth(app), db = getFirestore(app);
+const A = document.getElementById('app');
+let me = null, tab = 'home';
+const e = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const today = () => new Date().toISOString().slice(0, 10);
+const $ = id => document.getElementById(id);
+const shell = (title, sub, body) => {
+  const H = ['hol','🗓️','Holidays'];
+  const tabs = me.role === 'student' || me.role === 'parent' ? [['home','🏠','Home'],['att','📅','Attendance'],H]
+    : me.role === 'teacher' ? [['mark','✅','Mark'],H]
+    : me.role === 'admin' ? [['mark','✅','Mark'],['stu','🎓','Students'],['usr','👥','Users'],H] : [];
+  A.innerHTML = `<div class="hd"><div class="row"><div><h1>${title}</h1><p>${sub}</p></div><button class="r" id="out">Logout</button></div></div><div class="sec">${body}</div>` +
+    `<nav>${tabs.map(t => `<button data-t="${t[0]}" class="${tab === t[0] ? 'on' : ''}">${t[1]}<br><small>${t[2]}</small></button>`).join('')}</nav>`;
+  $('out').onclick = () => signOut(auth);
+  document.querySelectorAll('nav button').forEach(b => b.onclick = () => { tab = b.dataset.t; route(); });
+};
+
+function loginView(msg = '') {
+  A.innerHTML = `<div class="hd"><h1>School App</h1><p>Login ya naya account banayein</p></div><div class="sec">
+  <input id="n" placeholder="Poora naam (sirf naye account ke liye)"><input id="em" type="email" placeholder="Email"><input id="pw" type="password" placeholder="Password (min 6)">
+  <button id="li">Login</button><button id="su" style="background:var(--ok)">Naya account banayein</button>
+  <p class="mu" style="text-align:center">— ya —</p><button id="gl" style="background:#fff;color:#111;border:1px solid var(--bd)">🔵 Google se login</button><p class="bad">${e(msg)}</p></div>`;
+  $('gl').onclick = () => signInWithPopup(auth, new GoogleAuthProvider()).catch(x => loginView(x.message));
+  $('li').onclick = () => signInWithEmailAndPassword(auth, $('em').value, $('pw').value).catch(x => loginView(x.message));
+  $('su').onclick = async () => {
+    try {
+      const c = await createUserWithEmailAndPassword(auth, $('em').value, $('pw').value);
+      await setDoc(doc(db, 'users', c.user.uid), { name: $('n').value || 'New user', email: $('em').value, role: 'pending' });
+      location.reload();
+    } catch (x) { loginView(x.message); }
+  };
+}
+
+async function route() {
+  if (me.role === 'pending') return shell('Wait karein', me.name, '<div class="card">Aapka account ban gaya hai. School admin ke approve karne ke baad app khulega.</div>');
+  if (tab === 'hol') return holView();
+  if (me.role === 'student' || me.role === 'parent') {
+    if (tab !== 'att') tab = 'home';
+    const s = await getDocs(query(collection(db, 'attendance'), where('studentId', '==', me.studentId || '-')));
+    const rows = s.docs.map(d => d.data()).sort((a, b) => b.date.localeCompare(a.date));
+    const p = rows.filter(r => r.present).length, pc = rows.length ? Math.round(p / rows.length * 100) : 0;
+    if (tab === 'home') return shell('Welcome', e(me.name), `<div class="card"><div class="mu">Overall Attendance</div><div class="big ${pc < 75 ? 'bad' : 'ok'}">${pc}%</div><div class="mu">${p} present / ${rows.length} din</div></div>${pc < 75 && rows.length ? '<div class="card bad">⚠️ Attendance 75% se kam hai</div>' : ''}`);
+    return shell('Attendance', 'Din ke hisaab se', rows.map(r => `<div class="card row"><b>${r.date}</b><span class="${r.present ? 'ok' : 'bad'}">${r.present ? 'Present' : 'Absent'}</span></div>`).join('') || '<div class="card">Abhi koi record nahi</div>');
+  }
+  if (tab === 'home') tab = 'mark';
+  if (tab === 'mark') return markView();
+  if (tab === 'stu' && me.role === 'admin') return stuView();
+  if (tab === 'usr' && me.role === 'admin') return usrView();
+}
+
+async function markView(cls, date = today()) {
+  const all = (await getDocs(collection(db, 'students'))).docs.map(d => ({ id: d.id, ...d.data() }));
+  const classes = [...new Set(all.map(s => s.classId))].sort();
+  cls = cls || classes[0];
+  const list = all.filter(s => s.classId === cls).sort((a, b) => a.name.localeCompare(b.name));
+  const ex = {};
+  if (cls) (await getDocs(query(collection(db, 'attendance'), where('classId', '==', cls), where('date', '==', date)))).forEach(d => ex[d.data().studentId] = d.data().present);
+  const st = {}; list.forEach(s => st[s.id] = ex[s.id] ?? true);
+  shell('Attendance lein', e(me.name), `<select id="c">${classes.map(c => `<option ${c === cls ? 'selected' : ''}>${e(c)}</option>`).join('')}</select><input id="d" type="date" value="${date}">
+  ${list.map(s => `<div class="card row"><b>${e(s.name)}</b><button class="${st[s.id] ? 'g' : 'r'}" data-i="${s.id}">${st[s.id] ? 'Present' : 'Absent'}</button></div>`).join('') || '<div class="card">Is class me students nahi</div>'}
+  <button id="save">Save attendance</button>`);
+  $('c').onchange = () => markView($('c').value, $('d').value);
+  $('d').onchange = () => markView($('c').value, $('d').value);
+  document.querySelectorAll('[data-i]').forEach(b => b.onclick = () => { st[b.dataset.i] = !st[b.dataset.i]; b.className = st[b.dataset.i] ? 'g' : 'r'; b.textContent = st[b.dataset.i] ? 'Present' : 'Absent'; });
+  $('save').onclick = async () => {
+    const b = writeBatch(db), dt = $('d').value;
+    list.forEach(s => b.set(doc(db, 'attendance', dt + '_' + s.id), { studentId: s.id, classId: cls, date: dt, present: st[s.id] }));
+    await b.commit(); $('save').textContent = 'Saved ✅';
+  };
+}
+
+let holYear = new Date().getFullYear();
+function calHTML(hs) {
+  const hm = {}; hs.forEach(h => hm[h.date] = h.name);
+  const y = holYear, M = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  let work = 0, hol = 0, out = '';
+  for (let m = 0; m < 12; m++) {
+    const first = new Date(y, m, 1).getDay(), n = new Date(y, m + 1, 0).getDate();
+    let c = ['S','M','T','W','T','F','S'].map(x => `<span class="w">${x}</span>`).join('') + '<span></span>'.repeat(first);
+    for (let d = 1; d <= n; d++) {
+      const ds = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`, sun = new Date(y, m, d).getDay() === 0;
+      const isH = !!hm[ds]; if (isH) hol++; else if (!sun) work++;
+      c += `<span class="${isH ? 'h' : sun ? 's' : ''} ${ds === today() ? 't' : ''}" title="${e(hm[ds] || '')}">${d}</span>`;
+    }
+    out += `<div class="card"><b>${M[m]} ${y}</b><div class="mo" style="margin-top:8px">${c}</div></div>`;
+  }
+  return `<div class="card row"><button class="g" id="py">◀</button><b>${y}</b><button class="g" id="ny">▶</button></div>
+  <div class="card"><span class="ok"><b>${work}</b> working din</span> · <span class="bad"><b>${hol}</b> holidays</span> · <span class="mu">Sunday alag</span><div class="mu">Laal = holiday, laal text = Sunday</div></div>` + out;
+}
+async function holView() {
+  const hs = (await getDocs(collection(db, 'holidays'))).docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.date.localeCompare(b.date));
+  const t = today(), adm = me.role === 'admin';
+  const fmt = d => new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', weekday: 'short' });
+  shell('Holiday Calendar', 'Academic calendar',
+    (adm ? `<div class="card"><b>Holidays add karein</b><p class="mu">Har line me: YYYY-MM-DD, Naam (jaise: 2026-11-14, Children’s Day)</p><textarea id="t" rows="5"></textarea><button id="add">Add</button></div>` : '') +
+    calHTML(hs) + '<h3>Holidays ki list</h3>' + hs.map(h => `<div class="card row" style="${h.date < t ? 'opacity:.5' : ''}"><div><b>${e(h.name)}</b><div class="mu">${fmt(h.date)}</div></div>${adm ? `<button class="r" data-d="${h.id}">✕</button>` : ''}</div>`).join('') || '<div class="card">Abhi koi holiday nahi</div>');
+  $('py').onclick = () => { holYear--; holView(); };
+  $('ny').onclick = () => { holYear++; holView(); };
+  if (adm) {
+    $('add').onclick = async () => {
+      const ls = $('t').value.split('\n').map(l => { const i = l.indexOf(','); return [l.slice(0, i).trim(), l.slice(i + 1).trim()]; }).filter(l => /^\d{4}-\d{2}-\d{2}$/.test(l[0]) && l[1]);
+      const b = writeBatch(db); ls.forEach(l => b.set(doc(db, 'holidays', l[0] + '_' + l[1].toLowerCase().replace(/\W+/g, '-')), { date: l[0], name: l[1] }));
+      await b.commit(); holView();
+    };
+    document.querySelectorAll('[data-d]').forEach(b => b.onclick = async () => { await deleteDoc(doc(db, 'holidays', b.dataset.d)); holView(); });
+  }
+}
+
+async function stuView() {
+  const all = (await getDocs(collection(db, 'students'))).docs.map(d => d.data());
+  shell('Students', all.length + ' students', `<div class="card"><b>Bulk add</b><p class="mu">Har line me: Naam, Class (jaise: Aarav Mehta, 8-B)</p><textarea id="t" rows="6"></textarea><button id="add">Add students</button></div>` +
+    all.sort((a, b) => a.classId.localeCompare(b.classId)).map(s => `<div class="card row"><b>${e(s.name)}</b><span class="mu">${e(s.classId)}</span></div>`).join(''));
+  $('add').onclick = async () => {
+    const lines = $('t').value.split('\n').map(l => l.split(',').map(x => x.trim())).filter(l => l[0] && l[1]);
+    for (let i = 0; i < lines.length; i += 400) { const b = writeBatch(db); lines.slice(i, i + 400).forEach(l => b.set(doc(collection(db, 'students')), { name: l[0], classId: l[1] })); await b.commit(); }
+    stuView();
+  };
+}
+
+async function usrView() {
+  const us = (await getDocs(collection(db, 'users'))).docs.map(d => ({ id: d.id, ...d.data() }));
+  const st = (await getDocs(collection(db, 'students'))).docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.name.localeCompare(b.name));
+  shell('Users', 'Role aur student assign karein', us.map(u => `<div class="card"><b>${e(u.name)}</b> <span class="mu">${e(u.email)}</span>
+  <select data-r="${u.id}">${['pending', 'student', 'parent', 'teacher', 'admin'].map(r => `<option ${r === u.role ? 'selected' : ''}>${r}</option>`).join('')}</select>
+  <select data-s="${u.id}"><option value="">— student (student/parent ke liye) —</option>${st.map(s => `<option value="${s.id}" ${s.id === u.studentId ? 'selected' : ''}>${e(s.name)} (${e(s.classId)})</option>`).join('')}</select>
+  <button data-save="${u.id}">Save</button></div>`).join(''));
+  document.querySelectorAll('[data-save]').forEach(b => b.onclick = async () => {
+    const id = b.dataset.save;
+    await updateDoc(doc(db, 'users', id), { role: document.querySelector(`[data-r="${id}"]`).value, studentId: document.querySelector(`[data-s="${id}"]`).value });
+    b.textContent = 'Saved ✅';
+  });
+}
+
+onAuthStateChanged(auth, async u => {
+  if (!u) { me = null; return loginView(); }
+  const s = await getDoc(doc(db, 'users', u.uid));
+  if (!s.exists()) {
+    me = { name: u.displayName || u.email, email: u.email, role: 'pending' };
+    try { await setDoc(doc(db, 'users', u.uid), me); } catch (x) {}
+  } else me = s.data();
+  tab = 'home'; route();
+});
+</script></body></html>
